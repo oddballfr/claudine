@@ -1,0 +1,8 @@
+# Local secrets and certificates must never land in this public repo.
+.env
+*.crt
+*.pem
+*.key
+
+# Temporary copy of the private source repo.
+_src/
