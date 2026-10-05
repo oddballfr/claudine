@@ -129,6 +129,10 @@ for git_path in hooks config; do
     set -- "$@" --mount "type=bind,source=${PROJECT_DIR}/.git/${git_path},target=${CONTAINER_WORKSPACE}/.git/${git_path},readonly"
   fi
 done
+# Optional extra variables (e.g. Jira), kept out of git.
+if [ -f claudine.env ]; then
+  set -- "$@" --env-file claudine.env
+fi
 
 # No --pid=host: with the host's UID it would expose every host process.
 # TERM/COLORTERM/KITTY_WINDOW_ID enable OSC 52 clipboard copy.

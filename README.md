@@ -58,6 +58,17 @@ function claudine () {
 }
 ```
 
+### Extra environment variables
+
+Host variables are not passed to the container. For those a skill or tool needs (API tokens, URLs), create `claudine.env` next to `run.sh`: it is loaded with `--env-file` when present and ignored by git.
+
+```sh
+# claudine.env: KEY=value per line, no quotes, no expansion
+JIRA_URL=https://example.atlassian.net
+JIRA_EMAIL=me@example.com
+JIRA_API_TOKEN=xxxxxxxx
+```
+
 ## How it works
 
 ```mermaid
@@ -88,7 +99,7 @@ flowchart LR
 | project dir | same path (rw) | Only writable workspace |
 | `/tmp/cc-socks` | `/tmp/cc-socks` (rw) | Cross-session discovery |
 
-- `settings.json`, `CLAUDE.md`, `hooks/`, `skills/`, `agents/`, `commands/`, `rules/` and `output-styles/` are read-only, so a session can't plant a hook that runs in later sessions.
+- `settings.json`, `CLAUDE.md`, `hooks/`, `skills/`, `agents/`, `commands/`, `rules/` and `output-styles/` are read-only, so a session can't plant a hook that runs in later sessions. A writable `settings.json` would let it grant itself permissions or add hooks and MCP servers, and a writable `CLAUDE.md` would let it rewrite its own rules: either is a way out of the sandbox. Edit them manually on the host; Claude can't change them, even when asked. Claude Code permission rules (`deny`) don't protect them: they only match specific tools and paths and are easily bypassed (Bash, scripts, symlinks, MCP servers). The read-only mount is enforced by the kernel, which is why claudine relies on the container rather than on permissions.
 - The project's `.git/hooks` and `.git/config` are read-only: both can run commands through the host's `git`. Not covered: git dirs created by the session (`git init`), worktrees and submodules. Review them before running `git` on the host.
 - No `--pid=host`: host processes stay invisible.
 - Hooks and MCP servers run inside the container: those relying on host-only paths or `127.0.0.1` services need adapting.

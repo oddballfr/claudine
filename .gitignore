@@ -1,5 +1,6 @@
 # Local secrets and certificates must never land in this public repo.
 .env
+claudine.env
 *.crt
 *.pem
 *.key
