@@ -4,25 +4,35 @@ set -e
 # Runs Claude Code in a container that shares the host's ~/.claude and can
 # only write to the project dir. The image is built on first run or --rebuild.
 #
-# Usage: ./run.sh [project-dir] [--rebuild]
+# Usage: ./run.sh [project-dir] [--rebuild] [--docker|--podman]
 
 IMAGE_NAME="claudine"
 PROJECT_DIR=""
 REBUILD=""
+# docker or podman, auto-detected when empty.
+RUNTIME="${CLAUDINE_RUNTIME:-}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help)
       cat <<'EOF'
-Usage: ./run.sh [project-dir] [--rebuild]
+Usage: ./run.sh [project-dir] [--rebuild] [--docker|--podman]
 
   project-dir   Directory to mount as the container's workspace (default: cwd)
   --rebuild     Rebuild the image from scratch (latest claude and Debian fixes)
+  --docker      Use docker (default when installed)
+  --podman      Use rootless podman (default when docker is missing)
+
+The runtime can also be set with CLAUDINE_RUNTIME=docker|podman.
 EOF
       exit 0
       ;;
     --rebuild)
       REBUILD="1"
+      shift
+      ;;
+    --docker|--podman)
+      RUNTIME="${1#--}"
       shift
       ;;
     -*)
@@ -39,12 +49,34 @@ EOF
       ;;
   esac
 done
+# podman-docker installs a "docker" shim that is really podman.
+if [ -z "$RUNTIME" ]; then
+  if command -v docker >/dev/null 2>&1; then
+    case "$(docker --version 2>/dev/null)" in
+      *[Pp]odman*) RUNTIME="podman" ;;
+      *) RUNTIME="docker" ;;
+    esac
+  else
+    RUNTIME="podman"
+  fi
+fi
+case "$RUNTIME" in
+  docker|podman) ;;
+  *)
+    echo "run.sh: CLAUDINE_RUNTIME must be docker or podman, got: $RUNTIME" >&2
+    exit 1
+    ;;
+esac
+if ! command -v "$RUNTIME" >/dev/null 2>&1; then
+  echo "run.sh: $RUNTIME not found in PATH" >&2
+  exit 1
+fi
 # Resolved before the cd below, so relative paths stay relative to the caller.
 PROJECT_DIR="$(cd "${PROJECT_DIR:-.}" && pwd)"
 
 cd "$(dirname "$0")"
 
-# Docker container names only allow [a-zA-Z0-9_.-].
+# Container names only allow [a-zA-Z0-9_.-].
 PROJECT_NAME="$(basename "$PROJECT_DIR" | tr -c 'a-zA-Z0-9_.\n-' '_')"
 # Same path as on the host, so Claude's project history matches.
 CONTAINER_WORKSPACE="$PROJECT_DIR"
@@ -53,14 +85,14 @@ CONTAINER_WORKSPACE="$PROJECT_DIR"
 RUN_HASH="$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
 CONTAINER_NAME="claudine-${PROJECT_NAME}-${RUN_HASH}"
 
-if [ -n "$REBUILD" ] || ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
+if [ -n "$REBUILD" ] || ! "$RUNTIME" image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
   # The image user takes the host UID, which can't be root's.
   if [ "$(id -u)" -eq 0 ]; then
     echo "run.sh: refusing to build as root, run it as your regular user" >&2
     exit 1
   fi
   # --no-cache: a cached apt layer would skip Debian security fixes.
-  docker build --pull ${REBUILD:+--no-cache} \
+  "$RUNTIME" build --pull ${REBUILD:+--no-cache} \
     --build-arg CLAUDE_UPDATE_DATE="$(date +%Y-%m-%d)" \
     --build-arg USER_UID="$(id -u)" \
     --build-arg USER_GID="$(id -g)" \
@@ -77,7 +109,7 @@ if [ -L "$CC_SOCKS_DIR" ] || [ "$(stat -c %u "$CC_SOCKS_DIR")" != "$(id -u)" ]; 
 fi
 chmod 700 "$CC_SOCKS_DIR"
 
-# Docker would create missing bind sources as root-owned dirs.
+# Docker would create missing bind sources as root-owned dirs, podman fails.
 mkdir -p "${HOME}/.claude"
 [ -e "${HOME}/.claude.json" ] || echo '{}' > "${HOME}/.claude.json"
 
@@ -129,6 +161,19 @@ for git_path in hooks config; do
     set -- "$@" --mount "type=bind,source=${PROJECT_DIR}/.git/${git_path},target=${CONTAINER_WORKSPACE}/.git/${git_path},readonly"
   fi
 done
+# Podman rejects the tmpfs uid=/gid= options. Rootless podman also maps the
+# host UID to root in the container, which can't read the host's 600 files
+# (~/.claude.json): keep-id keeps the host UID, U=true chowns the tmpfs to it.
+for tmpfs_dir in .cache .config .local/state; do
+  if [ "$RUNTIME" = "podman" ]; then
+    set -- "$@" --mount "type=tmpfs,destination=/home/claudine/${tmpfs_dir},tmpfs-mode=700,U=true"
+  else
+    set -- "$@" --tmpfs "/home/claudine/${tmpfs_dir}:uid=$(id -u),gid=$(id -g),mode=700"
+  fi
+done
+if [ "$RUNTIME" = "podman" ]; then
+  set -- "$@" --userns=keep-id
+fi
 # Optional extra variables (e.g. Jira), kept out of git.
 if [ -f claudine.env ]; then
   set -- "$@" --env-file claudine.env
@@ -137,7 +182,7 @@ fi
 # No --pid=host: with the host's UID it would expose every host process.
 # TERM/COLORTERM/KITTY_WINDOW_ID enable OSC 52 clipboard copy.
 # Updates come from --rebuild only: the container is thrown away on exit.
-exec docker run --rm -it \
+exec "$RUNTIME" run --rm -it \
   --name "$CONTAINER_NAME" \
   --cap-drop=ALL \
   --security-opt=no-new-privileges \
@@ -145,9 +190,6 @@ exec docker run --rm -it \
   --memory=8g \
   --read-only \
   --tmpfs /tmp \
-  --tmpfs "/home/claudine/.cache:uid=$(id -u),gid=$(id -g),mode=700" \
-  --tmpfs "/home/claudine/.config:uid=$(id -u),gid=$(id -g),mode=700" \
-  --tmpfs "/home/claudine/.local/state:uid=$(id -u),gid=$(id -g),mode=700" \
   --mount "type=bind,source=${HOME}/.claude,target=/home/claudine/.claude" \
   --mount "type=bind,source=${HOME}/.claude.json,target=/home/claudine/.claude/.claude.json" \
   --mount "type=bind,source=${PROJECT_DIR},target=${CONTAINER_WORKSPACE}" \
