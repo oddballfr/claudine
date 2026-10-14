@@ -49,6 +49,7 @@ EOF
       ;;
   esac
 done
+
 # podman-docker installs a "docker" shim that is really podman.
 if [ -z "$RUNTIME" ]; then
   if command -v docker >/dev/null 2>&1; then
@@ -56,8 +57,11 @@ if [ -z "$RUNTIME" ]; then
       *[Pp]odman*) RUNTIME="podman" ;;
       *) RUNTIME="docker" ;;
     esac
-  else
+  elif command -v podman >/dev/null 2>&1; then
     RUNTIME="podman"
+  else
+    echo "run.sh: neither docker nor podman found in PATH" >&2
+    exit 1
   fi
 fi
 case "$RUNTIME" in
@@ -171,8 +175,12 @@ for tmpfs_dir in .cache .config .local/state; do
     set -- "$@" --tmpfs "/home/claudine/${tmpfs_dir}:uid=$(id -u),gid=$(id -g),mode=700"
   fi
 done
+# Rootless podman can only cap memory when the cgroup v2 memory controller is
+# delegated to the user, which many hosts don't do: it would refuse to start.
 if [ "$RUNTIME" = "podman" ]; then
   set -- "$@" --userns=keep-id
+else
+  set -- "$@" --memory=8g
 fi
 # Optional extra variables (e.g. Jira), kept out of git.
 if [ -f claudine.env ]; then
@@ -187,7 +195,6 @@ exec "$RUNTIME" run --rm -it \
   --cap-drop=ALL \
   --security-opt=no-new-privileges \
   --pids-limit=4096 \
-  --memory=8g \
   --read-only \
   --tmpfs /tmp \
   --mount "type=bind,source=${HOME}/.claude,target=/home/claudine/.claude" \

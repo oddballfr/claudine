@@ -3,7 +3,7 @@
 Run Claude Code in a locked-down Docker or Podman container that reuses your host config (`~/.claude`, `~/.claude.json`): auth, settings, MCP servers and history carry over from a native install, which claudine is meant to replace.
 
 - Only the project directory is writable, at the same path as on the host.
-- Read-only root filesystem (tmpfs for `/tmp`, `~/.cache`, `~/.config`, `~/.local/state`), all capabilities dropped, `no-new-privileges`, 8 GB memory and 4096 PIDs caps, throwaway container (`--rm`).
+- Read-only root filesystem (tmpfs for `/tmp`, `~/.cache`, `~/.config`, `~/.local/state`), all capabilities dropped, `no-new-privileges`, 4096 PIDs cap (plus 8 GB memory with Docker), throwaway container (`--rm`).
 - Several sessions can run side by side, even on different project dirs: in practice, they discover and message each other through Claude Code's cross-session commands (`ListAgents`, `SendMessage`), via the shared `/tmp/cc-socks`.
 - Claude Code updates come from `./run.sh --rebuild` (auto-updater disabled).
 
