@@ -32,6 +32,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN echo 'path-exclude /usr/share/doc/*' > /etc/dpkg/dpkg.cfg.d/01-nodoc \
     && echo 'path-exclude /usr/share/man/*' >> /etc/dpkg/dpkg.cfg.d/01-nodoc
 
+# APT_UPDATE_DATE busts this layer's cache so a rebuild gets Debian security fixes.
+ARG APT_UPDATE_DATE=unset
 # upgrade applies Debian security fixes not yet in the base image.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \

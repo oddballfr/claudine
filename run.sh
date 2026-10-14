@@ -98,6 +98,7 @@ if [ -n "$REBUILD" ] || ! "$RUNTIME" image inspect "$IMAGE_NAME" >/dev/null 2>&1
   # --no-cache: a cached apt layer would skip Debian security fixes.
   "$RUNTIME" build --pull ${REBUILD:+--no-cache} \
     --build-arg CLAUDE_UPDATE_DATE="$(date +%Y-%m-%d)" \
+    --build-arg APT_UPDATE_DATE="$(date +%Y-%m-%d)" \
     --build-arg USER_UID="$(id -u)" \
     --build-arg USER_GID="$(id -g)" \
     -t "$IMAGE_NAME" .
