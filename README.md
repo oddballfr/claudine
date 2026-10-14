@@ -1,6 +1,6 @@
 # claudine
 
-Run Claude Code in a locked-down Docker container that reuses your host config (`~/.claude`, `~/.claude.json`): auth, settings, MCP servers and history carry over from a native install, which claudine is meant to replace.
+Run Claude Code in a locked-down Docker or Podman container that reuses your host config (`~/.claude`, `~/.claude.json`): auth, settings, MCP servers and history carry over from a native install, which claudine is meant to replace.
 
 - Only the project directory is writable, at the same path as on the host.
 - Read-only root filesystem (tmpfs for `/tmp`, `~/.cache`, `~/.config`, `~/.local/state`), all capabilities dropped, `no-new-privileges`, 8 GB memory and 4096 PIDs caps, throwaway container (`--rm`).
@@ -12,7 +12,7 @@ Run Claude Code in a locked-down Docker container that reuses your host config (
 
 ## Requirements
 
-- Docker (with BuildKit, the default on recent versions)
+- Docker (with BuildKit, the default on recent versions) or rootless Podman
 
 Tested on Ubuntu 24.04, Ubuntu 26.04 and Debian 13. The first run builds the image, then log in from the session with `/login`.
 
@@ -36,10 +36,14 @@ cd /path/to/your/project
 ```
 
 ```text
-Usage: ./run.sh [project-dir] [--rebuild]
+Usage: ./run.sh [project-dir] [--rebuild] [--docker|--podman]
 
   project-dir   Directory to mount as the container's workspace (default: cwd)
   --rebuild     Rebuild the image from scratch (latest claude and Debian fixes)
+  --docker      Use docker (default when installed)
+  --podman      Use rootless podman (default when docker is missing)
+
+The runtime can also be set with CLAUDINE_RUNTIME=docker|podman.
 ```
 
 Examples:
@@ -48,6 +52,7 @@ Examples:
 ./run.sh                   # open a session on the current directory
 ./run.sh ~/code/myapp      # open a session on ~/code/myapp
 ./run.sh --rebuild         # rebuild the image first
+./run.sh --podman          # use podman instead of docker
 ```
 
 Shell function for `~/.bashrc` or `~/.zshrc`:
