@@ -22,7 +22,11 @@ USER claudine
 
 # CLAUDE_UPDATE_DATE busts this layer's cache so a rebuild fetches the latest claude.
 ARG CLAUDE_UPDATE_DATE=unset
-RUN curl -fsSL https://claude.ai/install.sh | bash
+# Temporary ~/.curlrc bounds and retries the downloads made inside install.sh.
+RUN printf '%s\n' 'retry = 3' 'retry-all-errors' 'connect-timeout = 15' 'max-time = 120' > ~/.curlrc \
+    && curl -fsSL https://claude.ai/install.sh -o /tmp/install.sh \
+    && timeout 300 bash /tmp/install.sh \
+    && rm -f /tmp/install.sh ~/.curlrc
 ENV PATH="/home/claudine/.local/bin:${PATH}"
 
 FROM debian:trixie-slim
