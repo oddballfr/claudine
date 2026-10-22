@@ -59,8 +59,14 @@ RUN groupadd --gid "$USER_GID" claudine \
     && useradd --create-home --shell /bin/bash --uid "$USER_UID" --gid "$USER_GID" claudine
 
 COPY --from=builder --chown=claudine:claudine /home/claudine/.local /home/claudine/.local
+# Image copy used when the versions dir is empty (e.g. hidden by a host mount).
+# The build-time symlink would break once that version is gone: point it to /tmp.
+RUN install -D -m 755 "$(readlink -f /home/claudine/.local/bin/claude)" /opt/claude/claude \
+    && ln -sfn /tmp/claude-bin/claude /home/claudine/.local/bin/claude
+COPY --chmod=755 entrypoint.sh /usr/local/bin/claudine-entrypoint
 
 USER claudine
 ENV PATH="/home/claudine/.local/bin:${PATH}"
 
+ENTRYPOINT ["/usr/local/bin/claudine-entrypoint"]
 CMD ["claude"]
