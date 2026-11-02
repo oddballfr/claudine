@@ -26,8 +26,8 @@ ARG CLAUDE_UPDATE_DATE=unset
 RUN printf '%s\n' 'retry = 3' 'retry-all-errors' 'connect-timeout = 15' 'max-time = 120' > ~/.curlrc \
     && curl -fsSL https://claude.ai/install.sh -o /tmp/install.sh \
     && timeout 300 bash /tmp/install.sh \
-    && rm -f /tmp/install.sh ~/.curlrc
-ENV PATH="/home/claudine/.local/bin:${PATH}"
+    && rm -f /tmp/install.sh ~/.curlrc \
+    && cp "$(readlink -f ~/.local/bin/claude)" ~/claude
 
 FROM debian:trixie-slim
 
@@ -58,14 +58,14 @@ ARG USER_GID=1000
 RUN groupadd --gid "$USER_GID" claudine \
     && useradd --create-home --shell /bin/bash --uid "$USER_UID" --gid "$USER_GID" claudine
 
-COPY --from=builder --chown=claudine:claudine /home/claudine/.local /home/claudine/.local
-# Image copy used when the versions dir is empty (e.g. hidden by a host mount).
-# The build-time symlink would break once that version is gone: point it to /tmp.
-RUN install -D -m 755 "$(readlink -f /home/claudine/.local/bin/claude)" /opt/claude/claude \
-    && ln -sfn /tmp/claude-bin/claude /home/claudine/.local/bin/claude
+# Only the binary is shipped, at a path a host mount of ~/.local/share/claude cannot hide.
+COPY --from=builder /home/claudine/claude /opt/claude/claude
 COPY --chmod=755 entrypoint.sh /usr/local/bin/claudine-entrypoint
 
 USER claudine
+# Target set at startup by the entrypoint (versions dir, else /opt/claude/claude).
+RUN mkdir -p /home/claudine/.local/bin \
+    && ln -s /tmp/claude-bin/claude /home/claudine/.local/bin/claude
 ENV PATH="/home/claudine/.local/bin:${PATH}"
 
 ENTRYPOINT ["/usr/local/bin/claudine-entrypoint"]
